@@ -37,13 +37,14 @@ def clean_and_prepare_data(file_path):
     # تنظيف المسافات الزائدة في النصوص
     df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
-    # الخطوة 3: تحويل النصوص إلى أرقام (Label Encoding) لـ GENDER و LUNG_CANCER
+    # الخطوة 3: تحويل النصوص إلى أرقام (Label Encoding) لكل الأعمدة غير الرقمية
     le = LabelEncoder()
     for col in df.columns:
-        if df[col].dtype == 'object':
-            df[col] = le.fit_transform(df[col])
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            print(f"- Encoding column: {col}")
+            df[col] = le.fit_transform(df[col].astype(str))
     
-    print("- Encoding completed (Gender & Lung_Cancer converted to numbers).")
+    print("- Encoding completed (Categorical data converted to numbers).")
     return df
 
 # تنفيذ الجزء الأول
