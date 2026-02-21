@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 # استيراد المكتبات الخاصة بالمعالجة والتعلم الآلي حسب الخطة
 from sklearn.model_selection import train_test_split
@@ -18,6 +19,9 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 # =========================================================
 def clean_and_prepare_data(file_path):
     # الخطوة 1: تحميل الملف
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}. Please check the file name and path.")
+
     df = pd.read_csv(file_path)
     print(f"Original data size: {df.shape}")
 
