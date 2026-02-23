@@ -1,25 +1,34 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import pandas as pd
-import numpy as np
 import os
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.decomposition import PCA
-from imblearn.over_sampling import ADASYN
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
-from xgboost import XGBClassifier
-from sklearn.naive_bayes import GaussianNB
+from datetime import datetime
+from model_utils import ModelManager
+from PIL import Image, ImageTk
 
 class LungCancerPredictorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Lung Cancer Prediction System")
-        self.root.geometry("900x750")
-        self.root.configure(bg="#f4f7f6")
+        self.root.title("LUNG AI - MEDICAL INTELLIGENCE SYSTEM")
+        self.root.state('zoomed') # Open maximized on Windows
+        self.root.configure(bg="#0F172A") 
 
-        # Define features labels and types - Now using YES/NO
+        # Colors & Styles
+        self.bg_color = "#0F172A"
+        self.sidebar_color = "#1E293B"
+        self.card_color = "#1E293B"
+        self.input_bg = "#F8FAFC" # Lighter background for inputs for better visibility
+        self.input_fg = "#0F172A" # Dark text for inputs
+        self.accent_color = "#38BDF8" 
+        self.success_color = "#10B981" 
+        self.danger_color = "#EF4444" 
+        self.text_primary = "#F8FAFC"
+        self.text_secondary = "#94A3B8"
+
+        self.manager = ModelManager()
+        self.patient_id_var = tk.StringVar(value=f"ID-{datetime.now().strftime('%M%S')}")
+        self.patient_name_var = tk.StringVar(value="")
+        
         self.features = [
             ("Gender (الجنس)", "GENDER", ["M", "F"]),
             ("Age (العمر)", "AGE", "int"),
@@ -27,211 +36,273 @@ class LungCancerPredictorApp:
             ("Yellow Fingers (اصفرار الأصابع)", "YELLOW_FINGERS", ["YES", "NO"]),
             ("Anxiety (القلق)", "ANXIETY", ["YES", "NO"]),
             ("Peer Pressure (ضغط الأقران)", "PEER_PRESSURE", ["YES", "NO"]),
-            ("Chronic Disease (أمرض مزمنة)", "CHRONIC DISEASE", ["YES", "NO"]),
+            ("Chronic Disease (أمراض مزمنة)", "CHRONIC DISEASE", ["YES", "NO"]),
             ("Fatigue (التعب)", "FATIGUE ", ["YES", "NO"]),
             ("Allergy (الحساسية)", "ALLERGY ", ["YES", "NO"]),
             ("Wheezing (الصفير)", "WHEEZING", ["YES", "NO"]),
-            ("Alcohol Consuming (الكحول)", "ALCOHOL CONSUMING", ["YES", "NO"]),
+            ("Alcohol Consuming (تعاطي الكحول)", "ALCOHOL CONSUMING", ["YES", "NO"]),
             ("Coughing (السعال)", "COUGHING", ["YES", "NO"]),
-            ("Shortness of Breath (ضيق تنفس)", "SHORTNESS OF BREATH", ["YES", "NO"]),
-            ("Swallowing Difficulty (صعوبة بلع)", "SWALLOWING DIFFICULTY", ["YES", "NO"]),
+            ("Shortness of Breath (ضيق التنفس)", "SHORTNESS OF BREATH", ["YES", "NO"]),
+            ("Swallowing Difficulty (صعوبة البلع)", "SWALLOWING DIFFICULTY", ["YES", "NO"]),
             ("Chest Pain (ألم الصدر)", "CHEST PAIN", ["YES", "NO"])
         ]
         
         self.inputs = {}
-        self.model = None
-        self.scaler = None
-        self.pca = None
-        self.le = {}
-
+        self.last_prediction = None
+        self.setup_styles()
         self.setup_ui()
-        self.train_on_background()
+        self.initialize_model()
+
+    def setup_styles(self):
+        style = ttk.Style()
+        style.theme_use('clam')
+        
+        # Style for Combobox with light background
+        style.configure("TCombobox", fieldbackground=self.input_bg, background="#CBD5E1", foreground=self.input_fg)
+        style.map("TCombobox", fieldbackground=[('readonly', self.input_bg)])
+        
+        # Style for Entry
+        style.configure("TEntry", fieldbackground=self.input_bg, foreground=self.input_fg)
 
     def setup_ui(self):
-        # Header
-        header = tk.Frame(self.root, bg="#2c3e50", height=80)
-        header.pack(fill=tk.X)
+        # Sidebar
+        self.sidebar = tk.Frame(self.root, bg=self.sidebar_color, width=320)
+        self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        self.sidebar.pack_propagate(False)
+
+        # Branding
+        brand_frame = tk.Frame(self.sidebar, bg=self.sidebar_color)
+        brand_frame.pack(pady=(40, 20), padx=25, fill=tk.X)
+        tk.Label(brand_frame, text="LUNG AI PRO", font=("Segoe UI", 22, "bold"), bg=self.sidebar_color, fg=self.accent_color).pack(anchor="w")
+        tk.Label(brand_frame, text="الذكاء الاصطناعي للرئة", font=("Segoe UI", 14, "bold"), bg=self.sidebar_color, fg=self.text_secondary).pack(anchor="w")
+
+        # Sidebar Buttons (Navigation)
+        self.create_nav_btn("🏠 Dashboard | لوحة التحكم", None, "top", active=True)
+        self.reports_btn = self.create_nav_btn("📄 Medical Report | التقرير الطبي", self.show_medical_report, "top", state=tk.DISABLED)
+        self.charts_btn = self.create_nav_btn("📊 Data Analytics | تحليلات البيانات", self.show_charts, "top", state=tk.DISABLED)
         
-        tk.Label(header, text="Lung Cancer Prediction Tool - أداة التنبؤ بسرطان الرئة", 
-                 font=("Helvetica", 18, "bold"), bg="#2c3e50", fg="white").pack(pady=20)
+        # Main Workspace
+        workspace = tk.Frame(self.root, bg=self.bg_color)
+        workspace.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Main Layout
-        main_container = tk.Frame(self.root, bg="#f4f7f6")
-        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        # Header
+        header = tk.Frame(workspace, bg=self.bg_color)
+        header.pack(fill=tk.X, padx=40, pady=(40, 20))
+        tk.Label(header, text="Patient Diagnostic Center | مركز تشخيص المرضى", font=("Segoe UI", 22, "bold"), bg=self.bg_color, fg=self.text_primary).pack(side=tk.LEFT)
 
-        # Input Grid
-        input_frame = tk.LabelFrame(main_container, text="Patient Information | بيانات المريض", 
-                                   font=("Helvetica", 12, "bold"), bg="white", padx=20, pady=20)
-        input_frame.pack(fill=tk.BOTH, expand=True)
+        # Scrollable Content Area
+        content_container = tk.Frame(workspace, bg=self.bg_color)
+        content_container.pack(fill=tk.BOTH, expand=True, padx=40)
 
-        for i in range(4):
-            input_frame.columnconfigure(i, weight=1)
+        canvas = tk.Canvas(content_container, bg=self.bg_color, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(content_container, orient="vertical", command=canvas.yview)
+        self.scroll_frame = tk.Frame(canvas, bg=self.bg_color)
+
+        self.scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        # Use a dynamic width for the interior frame
+        canvas_window = canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        
+        def configure_canvas(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind("<Configure>", configure_canvas)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # 1. Patient Identity Card
+        id_card = tk.Frame(self.scroll_frame, bg=self.card_color, padx=30, pady=25)
+        id_card.pack(fill=tk.X, pady=10)
+        
+        tk.Label(id_card, text="PATIENT IDENTIFICATION | هوية المريض", font=("Segoe UI", 10, "bold"), bg=self.card_color, fg=self.accent_color).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 20))
+        
+        tk.Label(id_card, text="FULL NAME | الاسم الكامل", bg=self.card_color, fg=self.text_secondary, font=("Segoe UI", 10, "bold")).grid(row=1, column=0, sticky="w")
+        name_ent = tk.Entry(id_card, textvariable=self.patient_name_var, bg=self.input_bg, fg=self.input_fg, insertbackground="black", relief=tk.FLAT, width=45, font=("Segoe UI", 12), bd=8)
+        name_ent.grid(row=2, column=0, sticky="w", pady=(5, 0), padx=(0, 40))
+        
+        tk.Label(id_card, text="SYSTEM ID | المعرف", bg=self.card_color, fg=self.text_secondary, font=("Segoe UI", 10, "bold")).grid(row=1, column=1, sticky="w")
+        id_ent = tk.Entry(id_card, textvariable=self.patient_id_var, bg=self.input_bg, fg=self.input_fg, insertbackground="black", relief=tk.FLAT, width=25, font=("Segoe UI", 12), bd=8)
+        id_ent.grid(row=2, column=1, sticky="w", pady=(5, 0))
+
+        # 2. Symptoms Grid Card
+        sym_card = tk.Frame(self.scroll_frame, bg=self.card_color, padx=30, pady=25)
+        sym_card.pack(fill=tk.X, pady=10)
+        
+        tk.Label(sym_card, text="CLINICAL INDICATORS | المؤشرات السريرية", font=("Segoe UI", 10, "bold"), bg=self.card_color, fg=self.accent_color).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 20))
 
         for i, (label_text, key, options) in enumerate(self.features):
-            row = i // 2
-            col_label = (i % 2) * 2
-            col_entry = col_label + 1
+            row = (i // 2) + 1
+            col_lbl = (i % 2) * 2
+            col_ent = col_lbl + 1
             
-            tk.Label(input_frame, text=label_text + ":", bg="white", font=("Helvetica", 10)).grid(row=row, column=col_label, sticky="e", pady=10, padx=5)
+            tk.Label(sym_card, text=label_text.upper(), bg=self.card_color, fg=self.text_secondary, font=("Segoe UI", 9, "bold")).grid(row=row, column=col_lbl, sticky="e", pady=15, padx=(20, 10))
             
             if isinstance(options, list):
                 var = tk.StringVar(value=options[0])
                 self.inputs[key] = var
-                cb = ttk.Combobox(input_frame, textvariable=var, values=options, state="readonly", width=15)
-                cb.grid(row=row, column=col_entry, sticky="w", pady=10, padx=5)
+                cb = ttk.Combobox(sym_card, textvariable=var, values=options, state="readonly", width=18, font=("Segoe UI", 11))
+                cb.grid(row=row, column=col_ent, sticky="w", pady=15)
             else:
-                ent = ttk.Entry(input_frame, width=17)
+                ent = tk.Entry(sym_card, bg=self.input_bg, fg=self.input_fg, width=20, font=("Segoe UI", 11), bd=4, relief=tk.FLAT)
                 ent.insert(0, "50")
                 self.inputs[key] = ent
-                ent.grid(row=row, column=col_entry, sticky="w", pady=10, padx=5)
+                ent.grid(row=row, column=col_ent, sticky="w", pady=15)
 
-        # Reports Button (New)
-        self.reports_btn = tk.Button(main_container, text="Show Accuracy Reports | عرض تقارير الدقة", command=self.show_reports, 
-                                   bg="#3498db", fg="white", font=("Helvetica", 12, "bold"), 
-                                   padx=20, pady=5, relief=tk.FLAT, state=tk.DISABLED)
-        self.reports_btn.pack(pady=5)
+        # 3. ACTION BUTTON (Refined Size and Position)
+        self.main_predict_btn = tk.Button(self.scroll_frame, text="RUN AI DIAGNOSIS | بدء التشخيص", command=self.predict, 
+                                        bg=self.accent_color, fg="#0F172A", font=("Segoe UI", 12, "bold"), 
+                                        padx=40, pady=10, relief=tk.FLAT, cursor="hand2", 
+                                        activebackground="#7DD3FC", activeforeground="#0F172A")
+        self.main_predict_btn.pack(pady=(5, 20))
 
-        # Predict Button
-        self.predict_btn = tk.Button(main_container, text="Predict Result | عرض النتيجة", command=self.predict, 
-                                   bg="#e74c3c", fg="white", font=("Helvetica", 14, "bold"), 
-                                   padx=40, pady=10, relief=tk.FLAT)
-        self.predict_btn.pack(pady=10)
+        # 4. Result Monitor
+        self.monitor = tk.Frame(self.scroll_frame, bg=self.sidebar_color, padx=30, pady=30, highlightthickness=1)
+        self.monitor.pack(fill=tk.X, pady=20)
+        
+        self.mon_status = tk.Label(self.monitor, text="SYSTEM STATUS: ONLINE", font=("Segoe UI", 9, "bold"), bg=self.sidebar_color, fg=self.text_secondary)
+        self.mon_status.pack()
+        
+        self.mon_result = tk.Label(self.monitor, text="AWAITING INPUT", font=("Segoe UI", 26, "bold"), bg=self.sidebar_color, fg=self.accent_color)
+        self.mon_result.pack(pady=10)
 
-        # Result Display
-        self.result_label = tk.Label(main_container, text="Status: Model Training...", 
-                                   font=("Helvetica", 16, "bold"), bg="#f4f7f6", fg="#2c3e50")
-        self.result_label.pack()
+    def create_nav_btn(self, text, command, side, state=tk.NORMAL, active=False):
+        btn = tk.Button(self.sidebar, text=text, command=command, state=state, 
+                        bg=self.sidebar_color, fg=self.text_primary if active else self.text_secondary, 
+                        font=("Segoe UI", 11), relief=tk.FLAT, activebackground="#334155",
+                        padx=30, pady=18, anchor="w", cursor="hand2")
+        btn.pack(side=side, fill=tk.X)
+        return btn
 
-        self.classification_reports = ""
+    def initialize_model(self):
+        if self.manager.load_model():
+            self.mon_status.config(text="AI CORE: ACTIVE")
+            self.charts_btn.config(state=tk.NORMAL)
+        else:
+            self.mon_status.config(text="CALIBRATING...")
+            self.root.after(100, self.train_model)
 
-    def train_on_background(self):
+    def train_model(self):
         try:
-            from sklearn.metrics import classification_report, accuracy_score
-            file_path = 'survey lung cancer 1.csv'
-            if not os.path.exists(file_path):
-                messagebox.showerror("Error", f"File {file_path} not found!")
-                return
-
-            df = pd.read_csv(file_path)
-            df.dropna(inplace=True)
-            df.drop_duplicates(inplace=True)
-            df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
-
-            # Preprocessing
-            self.le = {}
-            for col in df.columns:
-                if not pd.api.types.is_numeric_dtype(df[col]):
-                    le = LabelEncoder()
-                    df[col] = le.fit_transform(df[col].astype(str))
-                    self.le[col] = le
-
-            X = df.drop('LUNG_CANCER', axis=1)
-            y = df['LUNG_CANCER']
-
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
-            
-            adasyn = ADASYN(random_state=88)
-            X_train_res, y_train_res = adasyn.fit_resample(X_train, y_train)
-
-            self.scaler = StandardScaler()
-            X_train_scaled = self.scaler.fit_transform(X_train_res)
-            X_test_scaled = self.scaler.transform(X_test)
-
-            self.pca = PCA(n_components=0.75)
-            X_train_pca = self.pca.fit_transform(X_train_scaled)
-            X_test_pca = self.pca.transform(X_test_scaled)
-
-            # Calculate individual reports
-            reports_list = []
-            individual_models = {
-                "KNN": KNeighborsClassifier(n_neighbors=5),
-                "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
-                "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
-                "Gradient Boosting": GradientBoostingClassifier(random_state=42),
-                "Gaussian NB": GaussianNB()
-            }
-
-            for name, model in individual_models.items():
-                model.fit(X_train_pca, y_train_res)
-                preds = model.predict(X_test_pca)
-                acc = accuracy_score(y_test, preds)
-                report = classification_report(y_test, preds)
-                reports_list.append(f"Algorithm: {name}\nAccuracy: {acc:.2%}\n{report}\n{'-'*40}")
-
-            base_models = [
-                ('knn', individual_models["KNN"]),
-                ('rf', individual_models["Random Forest"]),
-                ('xgb', individual_models["XGBoost"]),
-                ('gb', individual_models["Gradient Boosting"]),
-                ('gnb', individual_models["Gaussian NB"])
-            ]
-            self.model = StackingClassifier(
-                estimators=base_models,
-                final_estimator=RandomForestClassifier(n_estimators=50, random_state=42)
-            )
-            self.model.fit(X_train_pca, y_train_res)
-            
-            # Final stacking report
-            final_preds = self.model.predict(X_test_pca)
-            final_acc = accuracy_score(y_test, final_preds)
-            final_report = classification_report(y_test, final_preds)
-            reports_list.append(f"FINAL STACKING MODEL\nAccuracy: {final_acc:.2%}\n{final_report}")
-
-            self.classification_reports = "\n".join(reports_list)
-            self.result_label.config(text="Status: Ready for Prediction")
-            self.reports_btn.config(state=tk.NORMAL)
-
+            self.manager.train_full_pipeline()
+            self.manager.save_model()
+            self.mon_status.config(text="CALIBRATION COMPLETE")
+            self.charts_btn.config(state=tk.NORMAL)
         except Exception as e:
-            messagebox.showerror("Error", f"Training Failed: {str(e)}")
-
-    def show_reports(self):
-        report_win = tk.Toplevel(self.root)
-        report_win.title("Classification Reports - تقارير التصنيف")
-        report_win.geometry("600x600")
-        
-        txt_frame = tk.Frame(report_win)
-        txt_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        scrollbar = tk.Scrollbar(txt_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        text_area = tk.Text(txt_frame, font=("Courier", 10), wrap=tk.NONE, yscrollcommand=scrollbar.set)
-        text_area.insert(tk.END, self.classification_reports)
-        text_area.config(state=tk.DISABLED)
-        text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        scrollbar.config(command=text_area.yview)
+            messagebox.showerror("Core Error", str(e))
 
     def predict(self):
-        if not self.model:
-            messagebox.showwarning("Warning", "Please wait for model to finish training.")
+        if not self.patient_name_var.get().strip():
+            messagebox.showwarning("Incomplete Data", "Patient Name is mandatory for diagnostic logging.")
             return
-
         try:
             raw_data = {}
             for label, key, options in self.features:
                 val = self.inputs[key].get()
-                if key == "AGE":
-                    raw_data[key] = int(val)
-                elif key == "GENDER":
-                    raw_data[key] = self.le[key].transform([val])[0]
-                else:
-                    # Conversion logic: Map YES to 2 and NO to 1
-                    raw_data[key] = 2 if val == "YES" else 1
+                if key == "AGE": raw_data[key] = int(val)
+                elif key == "GENDER": raw_data[key] = self.manager.label_encoders[key].transform([val])[0]
+                else: raw_data[key] = 2 if val == "YES" else 1
 
-            input_df = pd.DataFrame([raw_data])
-            input_scaled = self.scaler.transform(input_df)
-            input_pca = self.pca.transform(input_scaled)
+            prediction = self.manager.predict(raw_data)
+            self.last_prediction = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([prediction])[0]
             
-            prediction = self.model.predict(input_pca)[0]
-            result_text = self.le['LUNG_CANCER'].inverse_transform([prediction])[0]
+            color = self.danger_color if self.last_prediction == "YES" else self.success_color
+            status = "ANALYSIS COMPLETE: CRITICAL RISK DETECTED" if self.last_prediction == "YES" else "ANALYSIS COMPLETE: NO ANOMALIES FOUND"
+            status_ar = "إيجابي (يوجد خطر)" if self.last_prediction == "YES" else "سلبي (سليم)"
             
-            color = "#e74c3c" if result_text == "YES" else "#27ae60"
-            display_text = f"Result: {result_text} ({'High Risk' if result_text == 'YES' else 'Low Risk'})"
-            self.result_label.config(text=display_text, fg=color)
-                
+            p_name = self.patient_name_var.get().upper()
+            self.mon_result.config(text=f"{p_name}\nRESULT/النتيجة: {self.last_prediction} ({status_ar})", fg=color)
+            self.mon_status.config(text=status, fg=color)
+            self.monitor.config(highlightbackground=color)
+            self.reports_btn.config(state=tk.NORMAL)
+            
         except Exception as e:
-            messagebox.showerror("Error", f"Prediction Error: {str(e)}")
+            messagebox.showerror("Logic Error", f"خطأ في المعالجة: {str(e)}")
+
+    def show_charts(self):
+        win = tk.Toplevel(self.root)
+        win.title("AI ANALYTICS VISUALIZER")
+        win.geometry("950x800")
+        win.configure(bg=self.bg_color)
+        nb = ttk.Notebook(win)
+        nb.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        plots = [("CORRELATION", "plots/correlation_matrix.png"), ("EVALUATION", "plots/final_evaluation.png"), 
+                 ("AGE TRENDS", "plots/age_distribution.png"), ("FEATURES", "plots/pca_component_importance.png")]
+        
+        self.tmp_imgs = []
+        for name, path in plots:
+            if os.path.exists(path):
+                tab = tk.Frame(nb, bg=self.bg_color)
+                nb.add(tab, text=name)
+                img = Image.open(path).resize((880, 650))
+                ph = ImageTk.PhotoImage(img)
+                self.tmp_imgs.append(ph)
+                tk.Label(tab, image=ph, bg=self.bg_color).pack(pady=10)
+
+    def show_medical_report(self):
+        if not self.last_prediction: return
+        rep = tk.Toplevel(self.root)
+        rep.title("DIAGNOSTIC ARCHIVE")
+        rep.geometry("650x880")
+        rep.configure(bg="#F8FAFC")
+        
+        header = tk.Frame(rep, bg=self.sidebar_color, pady=25)
+        header.pack(fill=tk.X)
+        tk.Label(header, text="OFFICIAL MEDICAL DIAGNOSIS", font=("Segoe UI", 16, "bold"), bg=self.sidebar_color, fg=self.accent_color).pack()
+        
+        content = tk.Text(rep, font=("Segoe UI", 10), padx=45, pady=40, relief=tk.FLAT, bg="white", fg="#0F172A")
+        content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Prepare Bilingual Status
+        status_en = "POSITIVE (RISK DETECTED)" if self.last_prediction == "YES" else "NEGATIVE (HEALTHY)"
+        status_ar = "إيجابي (يوجد خطر)" if self.last_prediction == "YES" else "سلبي (سليم)"
+        
+        # Consistent Data for report
+        text = f"""
+============================================================
+              MEDICAL PREDICTION RECORD
+              سجل التنبؤ الطبي الـذكـي
+============================================================
+STAMP / التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+SYSTEM LOG / السجل: LUNG-AI-v2.0
+------------------------------------------------------------
+
+[ PATIENT DATA | بيانات المريض ]
+- NAME / الاسم: {self.patient_name_var.get().upper()}
+- UUID / المعرف: {self.patient_id_var.get().upper()}
+- AGE / العمر: {self.inputs['AGE'].get()} Years
+- GENDER / الجنس: {self.inputs['GENDER'].get()}
+
+[ CLINICAL OBSERVATIONS | الملاحظات السريرية ]
+- Chronic Disease / أمراض مزمنة: {self.inputs['CHRONIC DISEASE'].get()}
+- Alcohol Intake / تعاطي الكحول: {self.inputs['ALCOHOL CONSUMING'].get()}
+- Chest Pain / ألم الصدر: {self.inputs['CHEST PAIN'].get()}
+
+[ EXAM RESULT | نتيجة الفحص ]
+- FINAL RESULT / النتيجة النهائية: {status_en}
+- ARABIC STATUS / الحالة بالعربية: {status_ar}
+
+[ GUIDANCE | التوجيهات ]
+{"PATIENT REQUIRES URGENT MEDICAL REVIEW" if self.last_prediction == "YES" else "NO PATHOLOGICAL INDICATIONS DETECTED"}
+{"المريض يحتاج إلى مراجعة طبية عاجلة وفحوصات تكميلية" if self.last_prediction == "YES" else "لم يتم اكتشاف مؤشرات مرضية خطيرة حالياً"}
+
+------------------------------------------------------------
+VALIDATED BY: STACKING ENSEMBLE AI CORE
+SECURITY HASH: {hex(id(self))}
+============================================================
+        """
+        content.insert(tk.END, text)
+        content.config(state=tk.DISABLED)
+        
+        tk.Button(rep, text="SAVE MEDICAL RECORD (.TXT)", bg="#0F172A", fg="white", 
+                  font=("Segoe UI", 10, "bold"), pady=15, relief=tk.FLAT,
+                  command=lambda: self.save_raw_report(text)).pack(fill=tk.X, padx=20, pady=(0, 20))
+
+    def save_raw_report(self, text):
+        f = filedialog.asksaveasfilename(defaultextension=".txt")
+        if f:
+            with open(f, 'w', encoding='utf-8') as file: file.write(text)
+            messagebox.showinfo("Export", "Record Saved.")
 
 if __name__ == "__main__":
     root = tk.Tk()

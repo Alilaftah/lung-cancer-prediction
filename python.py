@@ -1,136 +1,97 @@
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.metrics import confusion_matrix, roc_curve, auc
+from model_utils import ModelManager
+import numpy as np
 import os
+import sys
 
-# استيراد المكتبات الخاصة بالمعالجة والتعلم الآلي حسب الخطة
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.decomposition import PCA
-from imblearn.over_sampling import ADASYN
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
-from xgboost import XGBClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+# Ensure UTF-8 encoding for console output
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
-# 1) & 2) & 3) تحميل وتنظيف وتحويل البيانات (حسب كودك وخطة العمل)
-def clean_and_prepare_data(file_path):
-    # الخطوة 1: تحميل الملف
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}. Please check the file name and path.")
-
-    df = pd.read_csv(file_path)
-    print(f"Original data size: {df.shape}")
-
-    # الخطوة 2: حذف التكرارات والقيم الناقصة
-    if df.isnull().values.any():
-        df.dropna(inplace=True)
-        print("- Missing values deleted.")
-
-    if df.duplicated().any():
-        df.drop_duplicates(inplace=True)
-        print("- Duplicate rows deleted.")
-
-    # تنظيف المسافات الزائدة في النصوص
-    df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
-
-    # الخطوة 3: تحويل النصوص إلى أرقام (Label Encoding) لكل الأعمدة غير الرقمية
-    le = LabelEncoder()
-    for col in df.columns:
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            print(f"- Encoding column: {col}")
-            df[col] = le.fit_transform(df[col].astype(str))
+def main():
+    # Initialize the Model Manager
+    manager = ModelManager()
     
-    print("- Encoding completed (Categorical data converted to numbers).")
-    return df
+    print("--- 1) Starting Data Processing and Model Training ---")
+    reports, X_test_pca, y_test = manager.train_full_pipeline()
+    
+    print("\n--- 2) Performance Reports ---")
+    print(reports)
+    
+    manager.save_model()
+    
+    # --- 3) Scientific Evaluation Visualizations with Figure Captions ---
+    print("\n--- 3) Generating Annotated Scientific Evaluation Plots ---")
+    
+    # 3.1 Confusion Matrix and ROC Curve (Combined Figure)
+    y_pred = manager.model.predict(X_test_pca)
+    cm = confusion_matrix(y_test, y_pred)
+    
+    plt.figure(figsize=(16, 7))
+    
+    # Subplot A: Confusion Matrix
+    plt.subplot(1, 2, 1)
+    group_names = ['True Neg','False Pos','False Neg','True Pos']
+    group_counts = ["{0:0.0f}".format(value) for value in cm.flatten()]
+    labels = [f"{v1}\n{v2}" for v1, v2 in zip(group_names, group_counts)]
+    labels = np.asarray(labels).reshape(2,2)
+    
+    sns.heatmap(cm, annot=labels, fmt='', cmap='Blues', annot_kws={"size": 12})
+    plt.title('Annotated Confusion Matrix Analysis', fontsize=13)
+    plt.xlabel('Predicted Diagnosis', fontsize=11)
+    plt.ylabel('Actual Diagnosis', fontsize=11)
+    
+    # Subplot B: ROC Curve
+    y_probs = manager.model.predict_proba(X_test_pca)[:, 1]
+    fpr, tpr, thresholds = roc_curve(y_test, y_probs)
+    roc_auc = auc(fpr, tpr)
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(fpr, tpr, color='red', lw=3, label=f'Stacking Ensemble (AUC = {roc_auc:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.fill_between(fpr, tpr, alpha=0.1, color='red')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate', fontsize=11)
+    plt.ylabel('True Positive Rate', fontsize=11)
+    plt.title('Receiver Operating Characteristic (ROC) Curve', fontsize=13)
+    plt.legend(loc="lower right")
+    
+    # Scientific Caption for Figure 4
+    plt.figtext(0.5, -0.05, "Figure 4: Comparative evaluation of the predictive capability through Confusion Matrix (left) and ROC Curve (right) analysis.", 
+                ha="center", fontsize=11, fontweight='bold', bbox={"facecolor":"white", "alpha":0.5, "pad":5})
+    
+    plt.tight_layout()
+    plt.savefig('plots/final_evaluation.png', bbox_inches='tight')
+    
+    # 3.3 PCA Importance with Scientific Caption (Figure 5)
+    rf_model = manager.model.named_estimators_['rf']
+    importances = rf_model.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    
+    plt.figure(figsize=(12, 7))
+    plt.title("Importance Ranking of PCA Components in Classification Decision", fontsize=15)
+    bars = plt.bar(range(X_test_pca.shape[1]), importances[indices], align="center", color='teal')
+    plt.xticks(range(X_test_pca.shape[1]), indices)
+    plt.xlabel("Principle Component Index (Transformed Features)", fontsize=11)
+    plt.ylabel("Importance Impact Score", fontsize=11)
+    
+    # Label bars
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height,
+                 f'{height:.1%}', ha='center', va='bottom', fontsize=10)
 
-# تنفيذ الجزء الأول
-file_name = 'survey lung cancer 1.csv' # تأكد أن الملف بهذا الاسم في نفس مجلد الكود
-data_ready = clean_and_prepare_data(file_name)
+    # Scientific Caption for Figure 5
+    plt.figtext(0.5, -0.05, "Figure 5: Influence of identified principal components on the final classification decision of the Stacking model.", 
+                ha="center", fontsize=11, fontweight='bold', bbox={"facecolor":"white", "alpha":0.5, "pad":5})
+    
+    plt.savefig('plots/pca_component_importance.png', bbox_inches='tight')
+    
+    print("\n--- Scientific annotated plots saved in 'plots' folder successfully ---")
+    plt.show()
 
-# 4) استعراض جودة البيانات
-print("\n--- 4) Data Info ---")
-print(data_ready.info())
-
-# 5) تحديد الميزات (X) والهدف (y)
-X = data_ready.drop('LUNG_CANCER', axis=1)
-y = data_ready['LUNG_CANCER']
-
-# 6) تقسيم البيانات (80% تدريب، 20% اختبار)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
-
-# 7) موازنة البيانات باستخدام ADASYN (مهم جداً طبياً)
-# توليد عينات ذكية للفئة الأقل لضمان عدم انحياز النموذج
-adasyn = ADASYN(random_state=88)
-X_train_res, y_train_res = adasyn.fit_resample(X_train, y_train)
-print(f"\n- 7) ADASYN: Training data balanced to {X_train_res.shape}")
-
-# 8) التقييس (Standardization)
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train_res)
-X_test_scaled = scaler.transform(X_test)
-print("- 8) Standardization applied.")
-
-# 9) تقليل الأبعاد (PCA) - الحفاظ على 75% من التباين
-pca = PCA(n_components=0.75)
-X_train_pca = pca.fit_transform(X_train_scaled)
-X_test_pca = pca.transform(X_test_scaled)
-print(f"- 9) PCA: Features reduced to {X_train_pca.shape[1]} components (75% variance).")
-# 10) تدريب وتقييم كل خوارزمية على حدة
-print("\n--- 10) Individual Algorithms Evaluation ---")
-
-individual_models = {
-    "K-Nearest Neighbors (KNN)": KNeighborsClassifier(n_neighbors=5),
-    "Random Forest (RF)": RandomForestClassifier(n_estimators=100, random_state=42),
-    "XGBoost (XGB)": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
-    "Gradient Boosting (GB)": GradientBoostingClassifier(random_state=42),
-    "Gaussian Naive Bayes (GNB)": GaussianNB()
-}
-
-for name, model in individual_models.items():
-    print(f"\nEvaluating: {name}")
-    model.fit(X_train_pca, y_train_res)
-    predictions = model.predict(X_test_pca)
-    print(f"Accuracy of {name}: {accuracy_score(y_test, predictions):.2%}")
-    print(f"Classification Report for {name}:")
-    print(classification_report(y_test, predictions))
-    print("-" * 30)
-
-# 11) تدريب النموذج (Stacking Ensemble) والتقييم النهائي
-# تعريف النماذج الأساسية الأربعة
-base_models = [
-    ('knn', KNeighborsClassifier(n_neighbors=5)),
-    ('rf', RandomForestClassifier(n_estimators=100, random_state=42)),
-    ('xgb', XGBClassifier(use_label_encoder=False, eval_metric='logloss')),
-    ('gb', GradientBoostingClassifier(random_state=42)),
-    ('gnb', GaussianNB())
-]
-
-# استخدام Stacking لدمجهم معاً لرفع الدقة
-stacking_clf = StackingClassifier(
-    estimators=base_models,
-    final_estimator=RandomForestClassifier(n_estimators=50, random_state=42)
-)
-
-print("\n- 11) Training Stacking Ensemble Model (KNN, RF, XGB, GB)...")
-stacking_clf.fit(X_train_pca, y_train_res)
-
-# التنبؤ والنتائج
-y_pred = stacking_clf.predict(X_test_pca)
-
-print("\n" + "="*40)
-print(f" FINAL STACKING MODEL ACCURACY: {accuracy_score(y_test, y_pred):.2%}")
-print("="*40)
-
-print("\n--- Stacking Detailed Classification Report ---")
-print(classification_report(y_test, y_pred))
-
-# رسم مصفوفة الارتباك للتقرير النهائي للمشروع
-plt.figure(figsize=(6, 4))
-sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Blues')
-plt.title('Confusion Matrix - Lung Cancer Prediction (Stacking)')
-plt.xlabel('Predicted')
-plt.ylabel('Actual')
-plt.show()
+if __name__ == "__main__":
+    main()
