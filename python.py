@@ -12,6 +12,7 @@ from imblearn.over_sampling import ADASYN
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
 from xgboost import XGBClassifier
+from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 # =========================================================
@@ -92,39 +93,62 @@ X_train_pca = pca.fit_transform(X_train_scaled)
 X_test_pca = pca.transform(X_test_scaled)
 print(f"- 9) PCA: Features reduced to {X_train_pca.shape[1]} components (75% variance).")
 # =========================================================
-# 10) تدريب النموذج (Stacking Ensemble) والتقييم
+# 10) تدريب وتقييم كل خوارزمية على حدة
 # =========================================================
-# تعريف النماذج الأساسية الأربعة المذكورة في خطتك
+print("\n--- 10) Individual Algorithms Evaluation ---")
 
+individual_models = {
+    "K-Nearest Neighbors (KNN)": KNeighborsClassifier(n_neighbors=5),
+    "Random Forest (RF)": RandomForestClassifier(n_estimators=100, random_state=42),
+    "XGBoost (XGB)": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+    "Gradient Boosting (GB)": GradientBoostingClassifier(random_state=42),
+    "Gaussian Naive Bayes (GNB)": GaussianNB()
+}
+
+for name, model in individual_models.items():
+    print(f"\nEvaluating: {name}")
+    model.fit(X_train_pca, y_train_res)
+    predictions = model.predict(X_test_pca)
+    print(f"Accuracy of {name}: {accuracy_score(y_test, predictions):.2%}")
+    print(f"Classification Report for {name}:")
+    print(classification_report(y_test, predictions))
+    print("-" * 30)
+
+# =========================================================
+# 11) تدريب النموذج (Stacking Ensemble) والتقييم النهائي
+# =========================================================
+# تعريف النماذج الأساسية الأربعة
 base_models = [
     ('knn', KNeighborsClassifier(n_neighbors=5)),
     ('rf', RandomForestClassifier(n_estimators=100, random_state=42)),
     ('xgb', XGBClassifier(use_label_encoder=False, eval_metric='logloss')),
-    ('gb', GradientBoostingClassifier(random_state=42))
+    ('gb', GradientBoostingClassifier(random_state=42)),
+    ('gnb', GaussianNB())
 ]
+
 # استخدام Stacking لدمجهم معاً لرفع الدقة
 stacking_clf = StackingClassifier(
     estimators=base_models,
     final_estimator=RandomForestClassifier(n_estimators=50, random_state=42)
 )
 
-print("\n- 10) Training Stacking Ensemble Model (KNN, RF, XGB, GB)...")
+print("\n- 11) Training Stacking Ensemble Model (KNN, RF, XGB, GB)...")
 stacking_clf.fit(X_train_pca, y_train_res)
 
 # التنبؤ والنتائج
 y_pred = stacking_clf.predict(X_test_pca)
 
 print("\n" + "="*40)
-print(f" FINAL MODEL ACCURACY: {accuracy_score(y_test, y_pred):.2%}")
+print(f" FINAL STACKING MODEL ACCURACY: {accuracy_score(y_test, y_pred):.2%}")
 print("="*40)
 
-print("\n--- Detailed Classification Report ---")
+print("\n--- Stacking Detailed Classification Report ---")
 print(classification_report(y_test, y_pred))
 
 # رسم مصفوفة الارتباك للتقرير النهائي للمشروع
 plt.figure(figsize=(6, 4))
 sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Blues')
-plt.title('Confusion Matrix - Lung Cancer Prediction')
+plt.title('Confusion Matrix - Lung Cancer Prediction (Stacking)')
 plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.show()
