@@ -15,9 +15,7 @@ from xgboost import XGBClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
-# =========================================================
 # 1) & 2) & 3) تحميل وتنظيف وتحويل البيانات (حسب كودك وخطة العمل)
-# =========================================================
 def clean_and_prepare_data(file_path):
     # الخطوة 1: تحميل الملف
     if not os.path.exists(file_path):
@@ -52,49 +50,35 @@ def clean_and_prepare_data(file_path):
 file_name = 'survey lung cancer 1.csv' # تأكد أن الملف بهذا الاسم في نفس مجلد الكود
 data_ready = clean_and_prepare_data(file_name)
 
-# =========================================================
 # 4) استعراض جودة البيانات
-# =========================================================
 print("\n--- 4) Data Info ---")
 print(data_ready.info())
 
-# =========================================================
 # 5) تحديد الميزات (X) والهدف (y)
-# =========================================================
 X = data_ready.drop('LUNG_CANCER', axis=1)
 y = data_ready['LUNG_CANCER']
 
-# =========================================================
 # 6) تقسيم البيانات (80% تدريب، 20% اختبار)
-# =========================================================
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
 
-# =========================================================
 # 7) موازنة البيانات باستخدام ADASYN (مهم جداً طبياً)
-# =========================================================
 # توليد عينات ذكية للفئة الأقل لضمان عدم انحياز النموذج
 adasyn = ADASYN(random_state=88)
 X_train_res, y_train_res = adasyn.fit_resample(X_train, y_train)
 print(f"\n- 7) ADASYN: Training data balanced to {X_train_res.shape}")
 
-# =========================================================
 # 8) التقييس (Standardization)
-# =========================================================
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train_res)
 X_test_scaled = scaler.transform(X_test)
 print("- 8) Standardization applied.")
 
-# =========================================================
 # 9) تقليل الأبعاد (PCA) - الحفاظ على 75% من التباين
-# =========================================================
 pca = PCA(n_components=0.75)
 X_train_pca = pca.fit_transform(X_train_scaled)
 X_test_pca = pca.transform(X_test_scaled)
 print(f"- 9) PCA: Features reduced to {X_train_pca.shape[1]} components (75% variance).")
-# =========================================================
 # 10) تدريب وتقييم كل خوارزمية على حدة
-# =========================================================
 print("\n--- 10) Individual Algorithms Evaluation ---")
 
 individual_models = {
@@ -114,9 +98,7 @@ for name, model in individual_models.items():
     print(classification_report(y_test, predictions))
     print("-" * 30)
 
-# =========================================================
 # 11) تدريب النموذج (Stacking Ensemble) والتقييم النهائي
-# =========================================================
 # تعريف النماذج الأساسية الأربعة
 base_models = [
     ('knn', KNeighborsClassifier(n_neighbors=5)),
