@@ -16,7 +16,7 @@ from sklearn.metrics import accuracy_score, classification_report
 
 class ModelManager:
     def __init__(self):
-        # Initialize basic variables for model and data
+        # تهيئة المتغيرات الأساسية للنموذج والبيانات
         self.model = None
         self.scaler = None
         self.pca = None
@@ -25,19 +25,19 @@ class ModelManager:
         self.model_file = 'lung_cancer_model.joblib'
 
     def clean_and_prepare_data(self, df=None):
-        # Load data if not passed as a parameter
+        # تحميل البيانات إذا لم يتم تمريرها كمعامل
         if df is None:
             if not os.path.exists(self.file_path):
                 raise FileNotFoundError(f"File not found: {self.file_path}")
             df = pd.read_csv(self.file_path)
 
-        # Basic cleaning: remove nulls and duplicates
+        # التنظيف الأساسي: إزالة القيم الفارغة والتكرارات
         df.dropna(inplace=True)
         df.drop_duplicates(inplace=True)
-        # Remove extra whitespace from strings
+        # إزالة المسافات الزائدة من النصوص
         df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
-        # Categorical to numerical encoding
+        # تحويل البيانات الفئوية إلى عددية
         temp_le = {}
         processed_df = df.copy()
         for col in processed_df.columns:
@@ -46,8 +46,8 @@ class ModelManager:
                 processed_df[col] = le.fit_transform(processed_df[col].astype(str))
                 temp_le[col] = le
         
-        # --- Stage 3: Feature Engineering (as per roadmap) ---
-        # Combine ANXIETY and YELLOW_FINGERS to create a new feature
+        # --- المرحلة 3: هندسة الميزات (حسب خارطة الطريق) ---
+        # دمج القلق واصفرار الأصابع لإنشاء ميزة جديدة
         if 'ANXIETY' in processed_df.columns and 'YELLOW_FINGERS' in processed_df.columns:
             processed_df['ANX_YEL_FIN'] = processed_df['ANXIETY'] * processed_df['YELLOW_FINGERS']
         
@@ -55,13 +55,13 @@ class ModelManager:
         return processed_df
 
     def generate_eda_plots(self, df):
-        # Create plots directory if it doesn't exist
+        # إنشاء مجلد الرسوم البيانية إذا لم يكن موجوداً
         if not os.path.exists('plots'):
             os.makedirs('plots')
         
         plt.style.use('ggplot')
         
-        # 1. Pearson Correlation Matrix with Scientific Caption
+        # 1. مصفوفة ارتباط بيرسون مع تعليق توضيحي علمي
         plt.figure(figsize=(14, 11))
         sns.heatmap(df.corr(), annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
         plt.title('Pearson Correlation Matrix (Feature Relationship Analysis)', fontsize=15)
@@ -70,7 +70,7 @@ class ModelManager:
         plt.savefig('plots/correlation_matrix.png', bbox_inches='tight')
         plt.close()
 
-        # 2. Case distribution by Age with Scientific Caption
+        # 2. توزيع الحالات حسب العمر مع تعليق توضيحي علمي
         plt.figure(figsize=(12, 7))
         sns.histplot(data=df, x='AGE', hue='LUNG_CANCER', multiple='stack', bins=15, palette='viridis')
         plt.title('Lung Cancer Cases Distribution by Age Group', fontsize=16)
@@ -81,7 +81,7 @@ class ModelManager:
         plt.savefig('plots/age_distribution.png', bbox_inches='tight')
         plt.close()
 
-        # 3. Target Variable Distribution with Scientific Caption
+        # 3. توزيع المتغير المستهدف مع تعليق توضيحي علمي
         plt.figure(figsize=(8, 8))
         counts = df['LUNG_CANCER'].value_counts()
         labels = [f'NO ({counts[0]})', f'YES ({counts[1]})' if len(counts)>1 else f'NO ({counts[0]})']
@@ -96,33 +96,33 @@ class ModelManager:
         print("--- Scientific EDA plots generated in 'plots' folder ---")
 
     def train_full_pipeline(self):
-        # Load and prepare data
+        # تحميل وتجهيز البيانات
         df = self.clean_and_prepare_data()
         
-        # Generate EDA plots
+        # إنشاء الرسوم البيانية الاستكشافية
         self.generate_eda_plots(df)
         
         X = df.drop('LUNG_CANCER', axis=1)
         y = df['LUNG_CANCER']
 
-        # Data splitting
+        # تقسيم البيانات
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
 
-        # Data balancing using ADASYN
+        # موازنة البيانات باستخدام تقنية ADASYN
         adasyn = ADASYN(random_state=88)
         X_train_res, y_train_res = adasyn.fit_resample(X_train, y_train)
 
-        # Standardization
+        # التقييس (Standardization)
         self.scaler = StandardScaler()
         X_train_scaled = self.scaler.fit_transform(X_train_res)
         X_test_scaled = self.scaler.transform(X_test)
 
-        # Dimensionality Reduction using PCA
+        # تقليل الأبعاد باستخدام PCA
         self.pca = PCA(n_components=0.75)
         X_train_pca = self.pca.fit_transform(X_train_scaled)
         X_test_pca = self.pca.transform(X_test_scaled)
 
-        # Base models for stacking
+        # النماذج الأساسية للتجميع (Stacking)
         base_models = [
             ('knn', KNeighborsClassifier(n_neighbors=5)),
             ('rf', RandomForestClassifier(n_estimators=100, random_state=42)),
@@ -131,16 +131,16 @@ class ModelManager:
             ('gnb', GaussianNB())
         ]
 
-        # Create Stacking Classifier
+        # إنشاء مصنف التجميع (Stacking Classifier)
         self.model = StackingClassifier(
             estimators=base_models,
             final_estimator=RandomForestClassifier(n_estimators=50, random_state=42)
         )
 
-        # Model training
+        # تدريب النموذج
         self.model.fit(X_train_pca, y_train_res)
         
-        # Evaluate individual models for reporting
+        # تقييم النماذج الفردية لإعداد التقارير
         reports = []
         for name, m in base_models:
             m.fit(X_train_pca, y_train_res)
@@ -148,7 +148,7 @@ class ModelManager:
             acc = accuracy_score(y_test, preds)
             reports.append(f"Algorithm: {name.upper()}\nAccuracy: {acc:.2%}\n{classification_report(y_test, preds)}")
 
-        # Final evaluation of Stacking model
+        # التقييم النهائي لنموذج التجميع (Stacking Model)
         stack_preds = self.model.predict(X_test_pca)
         stack_acc = accuracy_score(y_test, stack_preds)
         reports.append(f"FINAL STACKING MODEL\nFinal Accuracy: {stack_acc:.2%}\n{classification_report(y_test, stack_preds)}")
@@ -156,7 +156,7 @@ class ModelManager:
         return "\n".join(reports), X_test_pca, y_test
 
     def save_model(self):
-        # Save model and associated objects
+        # حفظ النموذج والكائنات المرتبطة به
         data = {
             'model': self.model,
             'scaler': self.scaler,
@@ -167,7 +167,7 @@ class ModelManager:
         print(f"Model saved successfully to {self.model_file}")
 
     def load_model(self):
-        # Load saved model if exists
+        # تحميل النموذج المحفوظ إذا كان موجوداً
         if os.path.exists(self.model_file):
             data = joblib.load(self.model_file)
             self.model = data['model']
@@ -178,16 +178,16 @@ class ModelManager:
         return False
 
     def predict(self, raw_input_dict):
-        # Add engineered feature to new input
+        # إضافة الميزة الهندسية للمدخل الجديد
         if 'ANXIETY' in raw_input_dict and 'YELLOW_FINGERS' in raw_input_dict:
             raw_input_dict['ANX_YEL_FIN'] = raw_input_dict['ANXIETY'] * raw_input_dict['YELLOW_FINGERS']
             
         df_input = pd.DataFrame([raw_input_dict])
         
-        # Apply scaling and PCA
+        # تطبيق التقييس و PCA
         scaled = self.scaler.transform(df_input)
         pca_data = self.pca.transform(scaled)
         
-        # Prediction
+        # التنبؤ
         prediction = self.model.predict(pca_data)[0]
         return prediction

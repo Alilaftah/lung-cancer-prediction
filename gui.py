@@ -10,15 +10,15 @@ class LungCancerPredictorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("LUNG AI - MEDICAL INTELLIGENCE SYSTEM")
-        self.root.state('zoomed') # Open maximized on Windows
+        self.root.state('zoomed') # يفتح التطبيق مكبرًا على ويندوز
         self.root.configure(bg="#0F172A") 
 
-        # Colors & Styles
+        # الألوان والأنماط
         self.bg_color = "#0F172A"
         self.sidebar_color = "#1E293B"
         self.card_color = "#1E293B"
-        self.input_bg = "#F8FAFC" # Lighter background for inputs for better visibility
-        self.input_fg = "#0F172A" # Dark text for inputs
+        self.input_bg = "#F8FAFC" # خلفية فاتحة للمدخلات لرؤية أفضل
+        self.input_fg = "#0F172A" # نص داكن للمدخلات
         self.accent_color = "#38BDF8" 
         self.success_color = "#10B981" 
         self.danger_color = "#EF4444" 
@@ -57,40 +57,40 @@ class LungCancerPredictorApp:
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Style for Combobox with light background
+        # نمط قائمة الاختيار (Combobox) بخلفية فاتحة
         style.configure("TCombobox", fieldbackground=self.input_bg, background="#CBD5E1", foreground=self.input_fg)
         style.map("TCombobox", fieldbackground=[('readonly', self.input_bg)])
         
-        # Style for Entry
+        # نمط حقل الإدخال (Entry)
         style.configure("TEntry", fieldbackground=self.input_bg, foreground=self.input_fg)
 
     def setup_ui(self):
-        # Sidebar
+        # الشريط الجانبي
         self.sidebar = tk.Frame(self.root, bg=self.sidebar_color, width=320)
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
         self.sidebar.pack_propagate(False)
 
-        # Branding
+        # الهوية التجارية
         brand_frame = tk.Frame(self.sidebar, bg=self.sidebar_color)
         brand_frame.pack(pady=(40, 20), padx=25, fill=tk.X)
         tk.Label(brand_frame, text="LUNG AI PRO", font=("Segoe UI", 22, "bold"), bg=self.sidebar_color, fg=self.accent_color).pack(anchor="w")
         tk.Label(brand_frame, text="الذكاء الاصطناعي للرئة", font=("Segoe UI", 14, "bold"), bg=self.sidebar_color, fg=self.text_secondary).pack(anchor="w")
 
-        # Sidebar Buttons (Navigation)
+        # أزرار الشريط الجانبي (التنقل)
         self.create_nav_btn("🏠 Dashboard | لوحة التحكم", None, "top", active=True)
         self.reports_btn = self.create_nav_btn("📄 Medical Report | التقرير الطبي", self.show_medical_report, "top", state=tk.DISABLED)
         self.charts_btn = self.create_nav_btn("📊 Data Analytics | تحليلات البيانات", self.show_charts, "top", state=tk.DISABLED)
         
-        # Main Workspace
+        # مساحة العمل الرئيسية
         workspace = tk.Frame(self.root, bg=self.bg_color)
         workspace.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Header
+        # الرأس (Header)
         header = tk.Frame(workspace, bg=self.bg_color)
         header.pack(fill=tk.X, padx=40, pady=(40, 20))
         tk.Label(header, text="Patient Diagnostic Center | مركز تشخيص المرضى", font=("Segoe UI", 22, "bold"), bg=self.bg_color, fg=self.text_primary).pack(side=tk.LEFT)
 
-        # Scrollable Content Area
+        # منطقة المحتوى القابلة للتمرير
         content_container = tk.Frame(workspace, bg=self.bg_color)
         content_container.pack(fill=tk.BOTH, expand=True, padx=40)
 
@@ -99,7 +99,7 @@ class LungCancerPredictorApp:
         self.scroll_frame = tk.Frame(canvas, bg=self.bg_color)
 
         self.scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        # Use a dynamic width for the interior frame
+        # استخدام عرض ديناميكي للإطار الداخلي
         canvas_window = canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
         
         def configure_canvas(event):
@@ -110,7 +110,7 @@ class LungCancerPredictorApp:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # 1. Patient Identity Card
+        # 1. بطاقة هوية المريض
         id_card = tk.Frame(self.scroll_frame, bg=self.card_color, padx=30, pady=25)
         id_card.pack(fill=tk.X, pady=10)
         
@@ -124,7 +124,7 @@ class LungCancerPredictorApp:
         id_ent = tk.Entry(id_card, textvariable=self.patient_id_var, bg=self.input_bg, fg=self.input_fg, insertbackground="black", relief=tk.FLAT, width=25, font=("Segoe UI", 12), bd=8)
         id_ent.grid(row=2, column=1, sticky="w", pady=(5, 0))
 
-        # 2. Symptoms Grid Card
+        # 2. شبكة أعراض المرض
         sym_card = tk.Frame(self.scroll_frame, bg=self.card_color, padx=30, pady=25)
         sym_card.pack(fill=tk.X, pady=10)
         
@@ -148,14 +148,14 @@ class LungCancerPredictorApp:
                 self.inputs[key] = ent
                 ent.grid(row=row, column=col_ent, sticky="w", pady=15)
 
-        # 3. ACTION BUTTON (Refined Size and Position)
+        # 3. زر التشغيل (معدل الحجم والموقع)
         self.main_predict_btn = tk.Button(self.scroll_frame, text="RUN AI DIAGNOSIS | بدء التشخيص", command=self.predict, 
                                         bg=self.accent_color, fg="#0F172A", font=("Segoe UI", 12, "bold"), 
                                         padx=40, pady=10, relief=tk.FLAT, cursor="hand2", 
                                         activebackground="#7DD3FC", activeforeground="#0F172A")
         self.main_predict_btn.pack(pady=(5, 20))
 
-        # 4. Result Monitor
+        # 4. مراقب النتائج
         self.monitor = tk.Frame(self.scroll_frame, bg=self.sidebar_color, padx=30, pady=30, highlightthickness=1)
         self.monitor.pack(fill=tk.X, pady=20)
         
@@ -234,10 +234,11 @@ class LungCancerPredictorApp:
             if os.path.exists(path):
                 tab = tk.Frame(nb, bg=self.bg_color)
                 nb.add(tab, text=name)
-                img = Image.open(path).resize((880, 650))
-                ph = ImageTk.PhotoImage(img)
-                self.tmp_imgs.append(ph)
-                tk.Label(tab, image=ph, bg=self.bg_color).pack(pady=10)
+                with Image.open(path) as img_full:
+                    img = img_full.resize((880, 650))
+                    ph = ImageTk.PhotoImage(img)
+                    self.tmp_imgs.append(ph)
+                    tk.Label(tab, image=ph, bg=self.bg_color).pack(pady=10)
 
     def show_medical_report(self):
         if not self.last_prediction: return
@@ -253,11 +254,11 @@ class LungCancerPredictorApp:
         content = tk.Text(rep, font=("Segoe UI", 10), padx=45, pady=40, relief=tk.FLAT, bg="white", fg="#0F172A")
         content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        # Prepare Bilingual Status
+        # تجهيز الحالة ثنائية اللغة
         status_en = "POSITIVE (RISK DETECTED)" if self.last_prediction == "YES" else "NEGATIVE (HEALTHY)"
         status_ar = "إيجابي (يوجد خطر)" if self.last_prediction == "YES" else "سلبي (سليم)"
         
-        # Consistent Data for report
+        # بيانات متسقة للتقرير
         text = f"""
 ============================================================
               MEDICAL PREDICTION RECORD

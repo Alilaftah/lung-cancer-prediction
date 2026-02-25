@@ -6,12 +6,12 @@ import numpy as np
 import os
 import sys
 
-# Ensure UTF-8 encoding for console output
+# التأكد من ترميز UTF-8 لمخرجات وحدة التحكم (Console)
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
 def main():
-    # Initialize the Model Manager
+    # تهيئة مدير النموذج
     manager = ModelManager()
     
     print("--- 1) Starting Data Processing and Model Training ---")
@@ -22,16 +22,16 @@ def main():
     
     manager.save_model()
     
-    # --- 3) Scientific Evaluation Visualizations with Figure Captions ---
+    # --- 3) رسومات التقييم العلمي مع تعليقات توضيحية ---
     print("\n--- 3) Generating Annotated Scientific Evaluation Plots ---")
     
-    # 3.1 Confusion Matrix and ROC Curve (Combined Figure)
+    # 3.1 مصفوفة الارتباك ومنحنى ROC (شكل مدمج)
     y_pred = manager.model.predict(X_test_pca)
     cm = confusion_matrix(y_test, y_pred)
     
     plt.figure(figsize=(16, 7))
     
-    # Subplot A: Confusion Matrix
+    # الشكل الفرعي أ: مصفوفة الارتباك (Confusion Matrix)
     plt.subplot(1, 2, 1)
     group_names = ['True Neg','False Pos','False Neg','True Pos']
     group_counts = ["{0:0.0f}".format(value) for value in cm.flatten()]
@@ -43,7 +43,7 @@ def main():
     plt.xlabel('Predicted Diagnosis', fontsize=11)
     plt.ylabel('Actual Diagnosis', fontsize=11)
     
-    # Subplot B: ROC Curve
+    # الشكل الفرعي ب: منحنى ROC
     y_probs = manager.model.predict_proba(X_test_pca)[:, 1]
     fpr, tpr, thresholds = roc_curve(y_test, y_probs)
     roc_auc = auc(fpr, tpr)
@@ -59,14 +59,14 @@ def main():
     plt.title('Receiver Operating Characteristic (ROC) Curve', fontsize=13)
     plt.legend(loc="lower right")
     
-    # Scientific Caption for Figure 4
+    # تعليق علمي للشكل 4
     plt.figtext(0.5, -0.05, "Figure 4: Comparative evaluation of the predictive capability through Confusion Matrix (left) and ROC Curve (right) analysis.", 
                 ha="center", fontsize=11, fontweight='bold', bbox={"facecolor":"white", "alpha":0.5, "pad":5})
     
     plt.tight_layout()
     plt.savefig('plots/final_evaluation.png', bbox_inches='tight')
     
-    # 3.3 PCA Importance with Scientific Caption (Figure 5)
+    # 3.3 أهمية مكونات PCA مع تعليق علمي (الشكل 5)
     rf_model = manager.model.named_estimators_['rf']
     importances = rf_model.feature_importances_
     indices = np.argsort(importances)[::-1]
@@ -78,13 +78,13 @@ def main():
     plt.xlabel("Principle Component Index (Transformed Features)", fontsize=11)
     plt.ylabel("Importance Impact Score", fontsize=11)
     
-    # Label bars
+    # تسمية الأعمدة
     for bar in bars:
         height = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2., height,
                  f'{height:.1%}', ha='center', va='bottom', fontsize=10)
 
-    # Scientific Caption for Figure 5
+    # تعليق علمي للشكل 5
     plt.figtext(0.5, -0.05, "Figure 5: Influence of identified principal components on the final classification decision of the Stacking model.", 
                 ha="center", fontsize=11, fontweight='bold', bbox={"facecolor":"white", "alpha":0.5, "pad":5})
     
