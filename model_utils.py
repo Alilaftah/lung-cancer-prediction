@@ -61,7 +61,7 @@ class ModelManager:
         
         plt.style.use('ggplot')
         
-        # 1. مصفوفة ارتباط بيرسون مع تعليق توضيحي علمي
+        # 1. مصفوفة ارتباط بيرسون مع تعليق توضيحي
         plt.figure(figsize=(14, 11))
         sns.heatmap(df.corr(), annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
         plt.title('Pearson Correlation Matrix (Feature Relationship Analysis)', fontsize=15)
@@ -70,7 +70,7 @@ class ModelManager:
         plt.savefig('plots/correlation_matrix.png', bbox_inches='tight')
         plt.close()
 
-        # 2. توزيع الحالات حسب العمر مع تعليق توضيحي علمي
+        # 2. توزيع الحالات حسب العمر مع تعليق توضيحي
         plt.figure(figsize=(12, 7))
         sns.histplot(data=df, x='AGE', hue='LUNG_CANCER', multiple='stack', bins=15, palette='viridis')
         plt.title('Lung Cancer Cases Distribution by Age Group', fontsize=16)
