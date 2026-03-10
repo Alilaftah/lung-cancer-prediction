@@ -12,7 +12,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
 from xgboost import XGBClassifier
 from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV, RidgeClassifierCV
+from sklearn.metrics import accuracy_score, classification_report, precision_score, recall_score, f1_score, roc_auc_score
 
 class ModelManager:
     def __init__(self):
@@ -21,6 +22,8 @@ class ModelManager:
         self.scaler = None
         self.pca = None
         self.label_encoders = {}
+        self.model_reports = {} # store individual reports
+        self.accuracies = {}    # New: store numeric accuracy scores
         self.file_path = 'survey lung cancer 1.csv'
         self.model_file = 'lung_cancer_model.joblib'
 
@@ -45,8 +48,6 @@ class ModelManager:
                 le = LabelEncoder()
                 processed_df[col] = le.fit_transform(processed_df[col].astype(str))
                 temp_le[col] = le
-        
-        # --- المرحلة 3: هندسة الميزات (حسب خارطة الطريق) ---
         # دمج القلق واصفرار الأصابع لإنشاء ميزة جديدة
         if 'ANXIETY' in processed_df.columns and 'YELLOW_FINGERS' in processed_df.columns:
             processed_df['ANX_YEL_FIN'] = processed_df['ANXIETY'] * processed_df['YELLOW_FINGERS']
@@ -81,7 +82,7 @@ class ModelManager:
         plt.savefig('plots/age_distribution.png', bbox_inches='tight')
         plt.close()
 
-        # 3. توزيع المتغير المستهدف مع تعليق توضيحي علمي
+        # 3.توزيع المتغير المستهدفي
         plt.figure(figsize=(8, 8))
         counts = df['LUNG_CANCER'].value_counts()
         labels = [f'NO ({counts[0]})', f'YES ({counts[1]})' if len(counts)>1 else f'NO ({counts[0]})']
@@ -117,24 +118,27 @@ class ModelManager:
         X_train_scaled = self.scaler.fit_transform(X_train_res)
         X_test_scaled = self.scaler.transform(X_test)
 
-        # تقليل الأبعاد باستخدام PCA
-        self.pca = PCA(n_components=0.75)
+        # تقييم PCA - الحفاظ على 80% من التباين لتقليل الضوضاء المسببة للتشتت
+        self.pca = PCA(n_components=0.80)
         X_train_pca = self.pca.fit_transform(X_train_scaled)
         X_test_pca = self.pca.transform(X_test_scaled)
 
         # النماذج الأساسية للتجميع (Stacking)
         base_models = [
-            ('knn', KNeighborsClassifier(n_neighbors=5)),
-            ('rf', RandomForestClassifier(n_estimators=100, random_state=42)),
-            ('xgb', XGBClassifier(use_label_encoder=False, eval_metric='logloss')),
-            ('gb', GradientBoostingClassifier(random_state=42)),
+            ('knn', KNeighborsClassifier(n_neighbors=7, weights='distance')), 
+            ('rf', RandomForestClassifier(n_estimators=800, max_depth=10, random_state=42)),
+            ('xgb', XGBClassifier(n_estimators=700, learning_rate=0.005, max_depth=6, eval_metric='logloss', random_state=42)),
+            ('gb', GradientBoostingClassifier(n_estimators=700, learning_rate=0.005, max_depth=5, random_state=42)),
             ('gnb', GaussianNB())
         ]
 
         # إنشاء مصنف التجميع (Stacking Classifier)
         self.model = StackingClassifier(
             estimators=base_models,
-            final_estimator=RandomForestClassifier(n_estimators=50, random_state=42)
+            final_estimator=LogisticRegressionCV(cv=5, max_iter=2000, class_weight='balanced'), 
+            cv=10,
+            passthrough=True,
+            stack_method='auto'
         )
 
         # تدريب النموذج
@@ -145,13 +149,68 @@ class ModelManager:
         for name, m in base_models:
             m.fit(X_train_pca, y_train_res)
             preds = m.predict(X_test_pca)
+            
+            # Calculate metrics
             acc = accuracy_score(y_test, preds)
-            reports.append(f"Algorithm: {name.upper()}\nAccuracy: {acc:.2%}\n{classification_report(y_test, preds)}")
+            self.accuracies[name.lower()] = acc
+            prec = precision_score(y_test, preds, zero_division=0)
+            rec = recall_score(y_test, preds, zero_division=0)
+            f1 = f1_score(y_test, preds, zero_division=0)
+            
+            try:
+                probs = m.predict_proba(X_test_pca)[:, 1]
+                auc_val = roc_auc_score(y_test, probs)
+            except:
+                auc_val = 0.0 # Some models might not support predict_proba
+            
+            # Formatted report string
+            report = f"""
+PERFORMANCE METRICS:
+--------------------------------
+Accuracy  : {acc:.2%}
+Precision : {prec:.2%}
+Recall    : {rec:.2%}
+F1-Score  : {f1:.2%}
+ROC-AUC   : {auc_val:.2f}
+
+CLASSIFICATION DETAIL:
+--------------------------------
+{classification_report(y_test, preds)}
+"""
+            self.model_reports[name.lower()] = report
+            reports.append(f"Algorithm: {name.upper()}\n{report}")
 
         # التقييم النهائي لنموذج التجميع (Stacking Model)
         stack_preds = self.model.predict(X_test_pca)
-        stack_acc = accuracy_score(y_test, stack_preds)
-        reports.append(f"FINAL STACKING MODEL\nFinal Accuracy: {stack_acc:.2%}\n{classification_report(y_test, stack_preds)}")
+        
+        # Calculate stacking metrics
+        s_acc = accuracy_score(y_test, stack_preds)
+        self.accuracies['stacking'] = s_acc
+        s_prec = precision_score(y_test, stack_preds, zero_division=0)
+        s_rec = recall_score(y_test, stack_preds, zero_division=0)
+        s_f1 = f1_score(y_test, stack_preds, zero_division=0)
+        
+        try:
+            s_probs = self.model.predict_proba(X_test_pca)[:, 1]
+            s_auc = roc_auc_score(y_test, s_probs)
+        except:
+            s_auc = 0.0
+            
+        final_report = f"""
+PERFORMANCE METRICS:
+--------------------------------
+Accuracy  : {s_acc:.2%}
+Precision : {s_prec:.2%}
+Recall    : {s_rec:.2%}
+F1-Score  : {s_f1:.2%}
+ROC-AUC   : {s_auc:.2f}
+
+CLASSIFICATION DETAIL:
+--------------------------------
+{classification_report(y_test, stack_preds)}
+"""
+        self.model_reports['stacking'] = final_report
+        reports.append(f"FINAL STACKING MODEL\n{final_report}")
 
         return "\n".join(reports), X_test_pca, y_test
 
@@ -161,7 +220,9 @@ class ModelManager:
             'model': self.model,
             'scaler': self.scaler,
             'pca': self.pca,
-            'label_encoders': self.label_encoders
+            'label_encoders': self.label_encoders,
+            'model_reports': self.model_reports,
+            'accuracies': self.accuracies
         }
         joblib.dump(data, self.model_file)
         print(f"Model saved successfully to {self.model_file}")
@@ -174,6 +235,8 @@ class ModelManager:
             self.scaler = data['scaler']
             self.pca = data['pca']
             self.label_encoders = data['label_encoders']
+            self.model_reports = data.get('model_reports', {})
+            self.accuracies = data.get('accuracies', {})
             return True
         return False
 
@@ -189,5 +252,12 @@ class ModelManager:
         pca_data = self.pca.transform(scaled)
         
         # التنبؤ
-        prediction = self.model.predict(pca_data)[0]
-        return prediction
+        predictions = {}
+        predictions['stacking'] = self.model.predict(pca_data)[0]
+        
+        # التنبؤ باستخدام النماذج الفردية
+        for name, m in self.model.named_estimators_.items():
+            if name in ['knn', 'rf', 'gb', 'xgb']:
+                predictions[name] = m.predict(pca_data)[0]
+                
+        return predictions

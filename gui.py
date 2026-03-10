@@ -9,7 +9,7 @@ from PIL import Image, ImageTk
 class LungCancerPredictorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("LUNG AI - MEDICAL INTELLIGENCE SYSTEM")
+        self.root.title("التنبؤ بسرطان الرئة باستخدام التعلم الآلي - إعداد الطالب: علي لفته جبر")
         self.root.state('zoomed') # يفتح التطبيق مكبرًا على ويندوز
         self.root.configure(bg="#0F172A") 
 
@@ -49,6 +49,7 @@ class LungCancerPredictorApp:
         
         self.inputs = {}
         self.last_prediction = None
+        self.current_predictions = {} # Store current patient results for all algos
         self.setup_styles()
         self.setup_ui()
         self.initialize_model()
@@ -73,13 +74,20 @@ class LungCancerPredictorApp:
         # الهوية التجارية
         brand_frame = tk.Frame(self.sidebar, bg=self.sidebar_color)
         brand_frame.pack(pady=(40, 20), padx=25, fill=tk.X)
-        tk.Label(brand_frame, text="LUNG AI PRO", font=("Segoe UI", 22, "bold"), bg=self.sidebar_color, fg=self.accent_color).pack(anchor="w")
-        tk.Label(brand_frame, text="الذكاء الاصطناعي للرئة", font=("Segoe UI", 14, "bold"), bg=self.sidebar_color, fg=self.text_secondary).pack(anchor="w")
+        tk.Label(brand_frame, text="اعداد الطالب: علي لفته جبر", font=("Segoe UI", 10, "bold"), bg=self.sidebar_color, fg=self.text_primary).pack(anchor="w", pady=(5, 0))
+        tk.Label(brand_frame, text="المشرف العلمي: د. زينة خليل", font=("Segoe UI", 10), bg=self.sidebar_color, fg=self.accent_color).pack(anchor="w", pady=(5, 0))
 
         # أزرار الشريط الجانبي (التنقل)
         self.create_nav_btn("🏠 Dashboard | لوحة التحكم", None, "top", active=True)
         self.reports_btn = self.create_nav_btn("📄 Medical Report | التقرير الطبي", self.show_medical_report, "top", state=tk.DISABLED)
         self.charts_btn = self.create_nav_btn("📊 Data Analytics | تحليلات البيانات", self.show_charts, "top", state=tk.DISABLED)
+        
+        # أزرار الخوارزميات (Algorithms Analysis)
+        tk.Label(self.sidebar, text="ALGORITHM ANALYSIS | تحليل الخوارزميات", font=("Segoe UI", 8, "bold"), bg=self.sidebar_color, fg=self.accent_color, pady=10).pack(fill=tk.X)
+        self.btn_knn = self.create_nav_btn("🔹 KNN Analysis", lambda: self.show_algo_analysis('knn'), "top", state=tk.DISABLED)
+        self.btn_rf = self.create_nav_btn("🔹 RF Analysis", lambda: self.show_algo_analysis('rf'), "top", state=tk.DISABLED)
+        self.btn_gb = self.create_nav_btn("🔹 GB Analysis", lambda: self.show_algo_analysis('gb'), "top", state=tk.DISABLED)
+        self.btn_xgb = self.create_nav_btn("🔹 XGB Analysis", lambda: self.show_algo_analysis('xgb'), "top", state=tk.DISABLED)
         
         # مساحة العمل الرئيسية
         workspace = tk.Frame(self.root, bg=self.bg_color)
@@ -88,7 +96,7 @@ class LungCancerPredictorApp:
         # الرأس (Header)
         header = tk.Frame(workspace, bg=self.bg_color)
         header.pack(fill=tk.X, padx=40, pady=(40, 20))
-        tk.Label(header, text="Patient Diagnostic Center | مركز تشخيص المرضى", font=("Segoe UI", 22, "bold"), bg=self.bg_color, fg=self.text_primary).pack(side=tk.LEFT)
+        tk.Label(header, text="التنبؤ بسرطان الرئة باستخدام التعلم الآلي", font=("Segoe UI", 22, "bold"), bg=self.bg_color, fg=self.text_primary).pack(side=tk.LEFT)
 
         # منطقة المحتوى القابلة للتمرير
         content_container = tk.Frame(workspace, bg=self.bg_color)
@@ -164,6 +172,9 @@ class LungCancerPredictorApp:
         
         self.mon_result = tk.Label(self.monitor, text="AWAITING INPUT", font=("Segoe UI", 26, "bold"), bg=self.sidebar_color, fg=self.accent_color)
         self.mon_result.pack(pady=10)
+        
+        self.mon_details = tk.Label(self.monitor, text="", font=("Segoe UI", 10), bg=self.sidebar_color, fg=self.text_secondary, justify="center")
+        self.mon_details.pack(pady=5)
 
     def create_nav_btn(self, text, command, side, state=tk.NORMAL, active=False):
         btn = tk.Button(self.sidebar, text=text, command=command, state=state, 
@@ -177,9 +188,14 @@ class LungCancerPredictorApp:
         if self.manager.load_model():
             self.mon_status.config(text="AI CORE: ACTIVE")
             self.charts_btn.config(state=tk.NORMAL)
+            self.enable_algo_btns()
         else:
             self.mon_status.config(text="CALIBRATING...")
             self.root.after(100, self.train_model)
+
+    def enable_algo_btns(self):
+        for btn in [self.btn_knn, self.btn_rf, self.btn_gb, self.btn_xgb]:
+            btn.config(state=tk.NORMAL)
 
     def train_model(self):
         try:
@@ -187,6 +203,7 @@ class LungCancerPredictorApp:
             self.manager.save_model()
             self.mon_status.config(text="CALIBRATION COMPLETE")
             self.charts_btn.config(state=tk.NORMAL)
+            self.enable_algo_btns()
         except Exception as e:
             messagebox.showerror("Core Error", str(e))
 
@@ -202,16 +219,28 @@ class LungCancerPredictorApp:
                 elif key == "GENDER": raw_data[key] = self.manager.label_encoders[key].transform([val])[0]
                 else: raw_data[key] = 2 if val == "YES" else 1
 
-            prediction = self.manager.predict(raw_data)
-            self.last_prediction = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([prediction])[0]
+            self.current_predictions = self.manager.predict(raw_data)
+            predictions = self.current_predictions
+            self.last_prediction = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([predictions['stacking']])[0]
             
             color = self.danger_color if self.last_prediction == "YES" else self.success_color
             status = "ANALYSIS COMPLETE: CRITICAL RISK DETECTED" if self.last_prediction == "YES" else "ANALYSIS COMPLETE: NO ANOMALIES FOUND"
-            status_ar = "إيجابي (يوجد خطر)" if self.last_prediction == "YES" else "سلبي (سليم)"
+            status_ar = "إيجابي" if self.last_prediction == "YES" else "سلبي"
             
             p_name = self.patient_name_var.get().upper()
-            self.mon_result.config(text=f"{p_name}\nRESULT/النتيجة: {self.last_prediction} ({status_ar})", fg=color)
+            self.mon_result.config(text=f"{p_name}\nFinal Result: {self.last_prediction} ({status_ar})", fg=color)
             self.mon_status.config(text=status, fg=color)
+            
+            # عرض نتائج بقية الخوارزميات مع دقتها
+            details = []
+            for algo in ['knn', 'rf', 'gb', 'xgb']:
+                if algo in predictions:
+                    res = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([predictions[algo]])[0]
+                    res_ar = "إيجابي" if res == "YES" else "سلبي"
+                    acc_val = self.manager.accuracies.get(algo, 0)
+                    details.append(f"{algo.upper()}: {res} ({res_ar})\nAccuracy: {acc_val:.2%}")
+            
+            self.mon_details.config(text="  |  ".join(details))
             self.monitor.config(highlightbackground=color)
             self.reports_btn.config(state=tk.NORMAL)
             
@@ -263,9 +292,13 @@ class LungCancerPredictorApp:
 ============================================================
               MEDICAL PREDICTION RECORD
               سجل التنبؤ الطبي الـذكـي
+------------------------------------------------------------
+مشروع: التنبؤ بسرطان الرئة باستخدام التعلم الآلي
+اعداد الطالب: علي لفته جبر
+المشرف العلمي: د. زينة خليل
 ============================================================
 STAMP / التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-SYSTEM LOG / السجل: LUNG-AI-v2.0
+SYSTEM LOG / السجل: Lung Cancer Prediction ML
 ------------------------------------------------------------
 
 [ PATIENT DATA | بيانات المريض ]
@@ -304,6 +337,81 @@ SECURITY HASH: {hex(id(self))}
         if f:
             with open(f, 'w', encoding='utf-8') as file: file.write(text)
             messagebox.showinfo("Export", "Record Saved.")
+
+    def show_algo_analysis(self, algo_key):
+        report_text = self.manager.model_reports.get(algo_key, "No performance data available.")
+        
+        # Parse metrics from the text if possible for a prettier display
+        metrics = {"Accuracy": "N/A", "Precision": "N/A", "Recall": "N/A", "F1-Score": "N/A", "ROC-AUC": "N/A"}
+        lines = report_text.split('\n')
+        for line in lines:
+            if ':' in line:
+                key, val = line.split(':', 1)
+                key = key.strip()
+                if key in metrics:
+                    metrics[key] = val.strip()
+
+        # Fallback to direct accuracy data if parsing failed (ensures no N/A is shown)
+        if metrics["Accuracy"] == "N/A":
+            acc_val = self.manager.accuracies.get(algo_key, 0)
+            if acc_val > 0:
+                metrics["Accuracy"] = f"{acc_val:.2%}"
+
+        # Get current patient diagnosis
+        current_res_text = "N/A (Run Diagnosis First)"
+        if algo_key in self.current_predictions:
+            res_val = self.current_predictions[algo_key]
+            res_str = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([res_val])[0]
+            res_ar = "إيجابي (خطر)" if res_str == "YES" else "سلبي (سليم)"
+            current_res_text = f"{res_str} ({res_ar})"
+        
+        algo_win = tk.Toplevel(self.root)
+        algo_win.title(f"Performance Dashboard: {algo_key.upper()}")
+        algo_win.geometry("800x520")
+        algo_win.configure(bg="#0F172A")
+        
+        # Header area
+        header = tk.Frame(algo_win, bg="#1E293B", pady=20)
+        header.pack(fill=tk.X)
+        tk.Label(header, text=f"ALGORITHM PERFORMANCE: {algo_key.upper()}", font=("Segoe UI", 16, "bold"), bg="#1E293B", fg=self.accent_color).pack()
+        
+        # Top Section: Current Patient Card
+        patient_card = tk.Frame(algo_win, bg="#1E293B", padx=30, pady=20, highlightthickness=1, highlightbackground=self.accent_color)
+        patient_card.pack(fill=tk.X, padx=30, pady=20)
+        tk.Label(patient_card, text="CURRENT PATIENT DIAGNOSIS | تشخيص المريض الحالي", font=("Segoe UI", 9, "bold"), bg="#1E293B", fg=self.text_secondary).pack(anchor="w")
+        tk.Label(patient_card, text=current_res_text, font=("Segoe UI", 22, "bold"), bg="#1E293B", fg="#F8FAFC").pack(anchor="w", pady=(5,0))
+
+        # Middle Section: Metrics Dashboard (Grid of Cards)
+        metrics_frame = tk.Frame(algo_win, bg="#0F172A")
+        metrics_frame.pack(fill=tk.X, padx=30)
+        
+        # Metric categories to display as cards
+        display_metrics = [
+            ("ACCURACY", metrics["Accuracy"], "#38BDF8"),
+            ("PRECISION", metrics["Precision"], "#10B981"),
+            ("RECALL", metrics["Recall"], "#F59E0B"),
+            ("F1-SCORE", metrics["F1-Score"], "#8B5CF6")
+        ]
+
+        for i, (m_name, m_val, m_color) in enumerate(display_metrics):
+            card = tk.Frame(metrics_frame, bg="#1E293B", padx=15, pady=15, width=170, height=100)
+            card.grid(row=0, column=i, padx=5, pady=10, sticky="nsew")
+            card.grid_propagate(False)
+            
+            tk.Label(card, text=m_name, font=("Segoe UI", 8, "bold"), bg="#1E293B", fg=self.text_secondary).pack(anchor="center")
+            tk.Label(card, text=m_val, font=("Segoe UI", 16, "bold"), bg="#1E293B", fg=m_color).pack(expand=True)
+        
+        metrics_frame.grid_columnconfigure((0,1,2,3), weight=1)
+
+        # ROC-AUC Metric (Adding it centrally since it's important)
+        auc_frame = tk.Frame(algo_win, bg="#0F172A", pady=10)
+        auc_frame.pack(fill=tk.X, padx=30)
+        tk.Label(auc_frame, text=f"ROC-AUC SCORE: {metrics['ROC-AUC']}", font=("Segoe UI", 12, "bold"), bg="#0F172A", fg="#F59E0B").pack()
+
+        # Close Button
+        tk.Button(algo_win, text="CLOSE DASHBOARD | إغلاق", bg="#1E293B", fg="white", font=("Segoe UI", 10, "bold"), 
+                  command=algo_win.destroy, pady=12, relief=tk.FLAT, cursor="hand2", 
+                  activebackground="#334155", activeforeground="white").pack(fill=tk.X, padx=30, pady=(10, 20))
 
 if __name__ == "__main__":
     root = tk.Tk()
