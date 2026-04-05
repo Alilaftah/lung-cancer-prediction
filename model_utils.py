@@ -71,27 +71,48 @@ class ModelManager:
         plt.savefig('plots/correlation_matrix.png', bbox_inches='tight')
         plt.close()
 
-        # 2. توزيع الحالات حسب العمر مع تعليق توضيحي
+        # 2. توزيع الحالات الإيجابية حسب العمر مقسّمة على الجنس
         plt.figure(figsize=(12, 7))
-        sns.histplot(data=df, x='AGE', hue='LUNG_CANCER', multiple='stack', bins=15, palette='viridis')
-        plt.title('Lung Cancer Cases Distribution by Age Group', fontsize=16)
-        plt.xlabel('Patient Age', fontsize=12)
-        plt.ylabel('Frequency', fontsize=12)
-        plt.figtext(0.5, -0.05, "Figure 2: Demographic distribution of observed Lung Cancer cases across different age intervals.", 
+        
+        # تصفية الحالات لتشمل المصابين (الإيجابية) فقط
+        positive_cases = df[df['LUNG_CANCER'] == 1].copy()
+        
+        # إنشاء عمود لتمييز الجنس بوضوح في مفتاح الرسم البياني
+        positive_cases['GENDER_LABEL'] = positive_cases['GENDER'].map({1: 'Male', 0: 'Female', '1': 'Male', '0': 'Female'})
+        
+        # إذا لم يتم تعيين القيم بشكل صحيح (في حالة عدم تشفيرها كأرقام بعد)، نستخدم الحروف الأصلية
+        if positive_cases['GENDER_LABEL'].isnull().all() and 'M' in positive_cases['GENDER'].values:
+            positive_cases['GENDER_LABEL'] = positive_cases['GENDER'].map({'M': 'Male', 'F': 'Female'})
+            
+        sns.histplot(data=positive_cases, x='AGE', hue='GENDER_LABEL', multiple='dodge', bins=15, 
+                     palette={'Male': '#1E88E5', 'Female': '#D81B60'})
+        
+        plt.title('1. Positive Case Distribution Age-Wise Over Gender', fontsize=16, fontweight='bold')
+        plt.xlabel('Patient Age', fontsize=12, fontweight='bold')
+        plt.ylabel('Number of Positive Cases', fontsize=12, fontweight='bold')
+        
+        plt.figtext(0.5, -0.05, "Figure 2: Demographic breakdown of Lung Cancer positive cases across age groups, separated by gender.", 
                     ha="center", fontsize=11, fontweight='bold', bbox={"facecolor":"white", "alpha":0.5, "pad":5})
         plt.savefig('plots/age_distribution.png', bbox_inches='tight')
         plt.close()
 
-        # 3.توزيع المتغير المستهدفي
-        plt.figure(figsize=(8, 8))
-        counts = df['LUNG_CANCER'].value_counts()
-        labels = [f'NO ({counts[0]})', f'YES ({counts[1]})' if len(counts)>1 else f'NO ({counts[0]})']
-        plt.pie(counts, labels=labels, autopct='%1.1f%%', colors=['#66b3ff','#ff9999'], 
-                startangle=140, explode=(0.05, 0))
-        plt.title('Distribution of the Target Variable (LUNG_CANCER Signal)', fontsize=14)
-        plt.figtext(0.5, 0.01, "Figure 3: Class balance representation indicating the distribution of positive and negative diagnosis records.", 
+        # 3. بيانات غير متوازنة قبل الموازنة (Imbalanced Data Before Balancing)
+        plt.figure(figsize=(9, 6))
+        ax = sns.countplot(x='LUNG_CANCER', data=df, order=[0, 1], palette=['#66b3ff', '#ff9999'])
+        plt.title('Data Imbalance Before Balancing', fontsize=15, fontweight='bold')
+        plt.xticks(ticks=[0, 1], labels=['NO (Healthy)', 'YES (Cancer)'], fontsize=11)
+        plt.xlabel('Diagnosis Classification', fontsize=12, fontweight='bold')
+        plt.ylabel('Number of Patients', fontsize=12, fontweight='bold')
+        
+        for p in ax.patches:
+            height = p.get_height()
+            if not np.isnan(height) and height > 0:
+                ax.text(p.get_x() + p.get_width()/2., height + max(1, height*0.02), f'{int(height)}', 
+                        ha="center", fontsize=12, fontweight='bold', color='black')
+
+        plt.figtext(0.5, -0.05, "Figure 3: Representation of Class Imbalance in original data before applying balancing technique.", 
                     ha="center", fontsize=11, fontweight='bold', bbox={"facecolor":"white", "alpha":0.5, "pad":5})
-        plt.savefig('plots/target_distribution.png', bbox_inches='tight')
+        plt.savefig('plots/imbalance_before.png', bbox_inches='tight')
         plt.close()
 
         print("--- Scientific EDA plots generated in 'plots' folder ---")

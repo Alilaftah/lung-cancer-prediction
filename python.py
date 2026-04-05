@@ -71,24 +71,58 @@ def main():
     importances = rf_model.feature_importances_
     indices = np.argsort(importances)[::-1]
     
-    plt.figure(figsize=(12, 7))
-    plt.title("Importance Ranking of PCA Components in Classification Decision", fontsize=15)
-    bars = plt.bar(range(X_test_pca.shape[1]), importances[indices], align="center", color='teal')
-    plt.xticks(range(X_test_pca.shape[1]), indices)
-    plt.xlabel("Principle Component Index (Transformed Features)", fontsize=11)
-    plt.ylabel("Importance Impact Score", fontsize=11)
+    plt.figure(figsize=(14, 8))
     
-    # تسمية الأعمدة
-    for bar in bars:
+    title_text = "Importance of PCA Components"
+    plt.title(title_text, fontsize=16, pad=20, fontweight='bold', color='navy')
+    
+    bars = plt.bar(range(X_test_pca.shape[1]), importances[indices], align="center", color='teal', edgecolor='black', alpha=0.8)
+    plt.xticks(range(X_test_pca.shape[1]), [f"PCA-{i}" for i in indices], rotation=45, fontsize=10)
+    
+    x_label = "Principal Component (Transformed Features)"
+    y_label = "Importance Score"
+    plt.xlabel(x_label, fontsize=12, fontweight='bold')
+    plt.ylabel(y_label, fontsize=12, fontweight='bold')
+    
+    # إضافة خط متوسط الأهمية لتسهيل الفهم
+    mean_importance = np.mean(importances)
+    plt.axhline(y=mean_importance, color='red', linestyle='--', linewidth=2, alpha=0.7)
+    mean_label = "Average threshold"
+    plt.text(len(indices)-1, mean_importance + 0.002, 
+             mean_label, 
+             color='red', ha='right', va='bottom', fontsize=10, fontweight='bold')
+    
+    # تسمية الأعمدة ومؤشرات للفهم
+    for i, bar in enumerate(bars):
         height = bar.get_height()
+        # مؤشر سهمي لأعلى عمود (الأكثر تأثيرا)
+        if i == 0:
+            top_label = "Most Important"
+            plt.annotate(top_label,
+                         xy=(bar.get_x() + bar.get_width() / 2, height),
+                         xytext=(bar.get_x() + bar.get_width() / 2, height + 0.03),
+                         arrowprops=dict(facecolor='orange', shrink=0.05, width=2, headwidth=8),
+                         ha='center', va='bottom', fontsize=11, fontweight='bold', color='darkorange')
+        
+        # مؤشر سهمي لأقل عمود تأثيراً (في النهاية)
+        elif i == len(bars) - 1:
+            low_label = "Lowest Impact"
+            plt.annotate(low_label,
+                         xy=(bar.get_x() + bar.get_width() / 2, height),
+                         xytext=(bar.get_x() + bar.get_width() / 2, height + 0.03),
+                         arrowprops=dict(facecolor='gray', shrink=0.05, width=1, headwidth=6),
+                         ha='center', va='bottom', fontsize=9, fontweight='bold', color='gray')
+
         plt.text(bar.get_x() + bar.get_width()/2., height,
                  f'{height:.1%}', ha='center', va='bottom', fontsize=10)
 
-    # تعليق علمي للشكل 5
-    plt.figtext(0.5, -0.05, "Figure 5: Influence of identified principal components on the final classification decision of the Stacking model.", 
-                ha="center", fontsize=11, fontweight='bold', bbox={"facecolor":"white", "alpha":0.5, "pad":5})
+    # إضافة نص للقارئ يشرح المخطط
+    footer_text = "Note: Taller bars mean the model relies more on these specific features to predict lung cancer."
     
-    plt.savefig('plots/pca_component_importance.png', bbox_inches='tight')
+    plt.figtext(0.5, -0.05, footer_text, 
+                ha="center", fontsize=12, bbox={"facecolor":"#eef2f3", "alpha":0.9, "pad":10, "edgecolor":"gray"})
+    
+    plt.savefig('plots/pca_component_importance.png', bbox_inches='tight', dpi=150)
     
     print("\n--- Scientific annotated plots saved in 'plots' folder successfully ---")
     plt.show()

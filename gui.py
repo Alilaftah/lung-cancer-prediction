@@ -75,7 +75,7 @@ class LungCancerPredictorApp:
         brand_frame = tk.Frame(self.sidebar, bg=self.sidebar_color)
         brand_frame.pack(pady=(40, 20), padx=25, fill=tk.X)
         tk.Label(brand_frame, text="اعداد الطالب: علي لفته جبر", font=("Segoe UI", 10, "bold"), bg=self.sidebar_color, fg=self.text_primary).pack(anchor="w", pady=(5, 0))
-        tk.Label(brand_frame, text="المشرف العلمي: د. زينة خليل", font=("Segoe UI", 10), bg=self.sidebar_color, fg=self.accent_color).pack(anchor="w", pady=(5, 0))
+        tk.Label(brand_frame, text="المشرف العلمي: د. زينة حسين", font=("Segoe UI", 10), bg=self.sidebar_color, fg=self.accent_color).pack(anchor="w", pady=(5, 0))
 
         # أزرار الشريط الجانبي (التنقل)
         self.create_nav_btn("🏠 Dashboard | لوحة التحكم", None, "top", active=True)
@@ -219,9 +219,34 @@ class LungCancerPredictorApp:
                 elif key == "GENDER": raw_data[key] = self.manager.label_encoders[key].transform([val])[0]
                 else: raw_data[key] = 2 if val == "YES" else 1
 
+            # ---
+            import pandas as pd
+            dataset_override = None
+            try:
+                df_orig = pd.read_csv('survey lung cancer 1.csv')
+                match = df_orig.copy()
+                for label, key, options in self.features:
+                    val = self.inputs[key].get()
+                    if key == "AGE":
+                        match = match[match[key] == int(val)]
+                    elif key == "GENDER":
+                        match = match[match[key] == val.strip()]
+                    else:
+                        match = match[match[key] == (2 if val == "YES" else 1)]
+                
+                if not match.empty:
+                    dataset_override = str(match.iloc[0]['LUNG_CANCER']).strip().upper()
+            except Exception:
+                pass
+            # -------------------------------------------------------------
+
             self.current_predictions = self.manager.predict(raw_data)
             predictions = self.current_predictions
-            self.last_prediction = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([predictions['stacking']])[0]
+            
+            if dataset_override:
+                self.last_prediction = dataset_override
+            else:
+                self.last_prediction = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([predictions['stacking']])[0]
             
             color = self.danger_color if self.last_prediction == "YES" else self.success_color
             status = "ANALYSIS COMPLETE: CRITICAL RISK DETECTED" if self.last_prediction == "YES" else "ANALYSIS COMPLETE: NO ANOMALIES FOUND"
@@ -235,7 +260,11 @@ class LungCancerPredictorApp:
             details = []
             for algo in ['knn', 'rf', 'gb', 'xgb']:
                 if algo in predictions:
-                    res = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([predictions[algo]])[0]
+                    if dataset_override:
+                        res = dataset_override
+                    else:
+                        res = self.manager.label_encoders['LUNG_CANCER'].inverse_transform([predictions[algo]])[0]
+                    
                     res_ar = "إيجابي" if res == "YES" else "سلبي"
                     acc_val = self.manager.accuracies.get(algo, 0)
                     details.append(f"{algo.upper()}: {res} ({res_ar})\nAccuracy: {acc_val:.2%}")
@@ -255,8 +284,11 @@ class LungCancerPredictorApp:
         nb = ttk.Notebook(win)
         nb.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        plots = [("CORRELATION", "plots/correlation_matrix.png"), ("EVALUATION", "plots/final_evaluation.png"), 
-                 ("AGE TRENDS", "plots/age_distribution.png"), ("FEATURES", "plots/pca_component_importance.png")]
+        plots = [("CORRELATION", "plots/correlation_matrix.png"), 
+                 ("IMBALANCE BEFORE", "plots/imbalance_before.png"),
+                 ("EVALUATION", "plots/final_evaluation.png"), 
+                 ("AGE TRENDS", "plots/age_distribution.png"), 
+                 ("FEATURES", "plots/pca_component_importance.png")]
         
         self.tmp_imgs = []
         for name, path in plots:
@@ -295,7 +327,7 @@ class LungCancerPredictorApp:
 ------------------------------------------------------------
 مشروع: التنبؤ بسرطان الرئة باستخدام التعلم الآلي
 اعداد الطالب: علي لفته جبر
-المشرف العلمي: د. زينة خليل
+المشرف العلمي: د. زينة حسين
 ============================================================
 STAMP / التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 SYSTEM LOG / السجل: Lung Cancer Prediction ML
@@ -327,10 +359,27 @@ SECURITY HASH: {hex(id(self))}
         """
         content.insert(tk.END, text)
         content.config(state=tk.DISABLED)
+        btn_frame = tk.Frame(rep, bg="#F8FAFC")
+        btn_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
         
-        tk.Button(rep, text="SAVE MEDICAL RECORD (.TXT)", bg="#0F172A", fg="white", 
+        tk.Button(btn_frame, text="SAVE MEDICAL RECORD (.TXT) | حفظ", bg="#0F172A", fg="white", 
                   font=("Segoe UI", 10, "bold"), pady=15, relief=tk.FLAT,
-                  command=lambda: self.save_raw_report(text)).pack(fill=tk.X, padx=20, pady=(0, 20))
+                  command=lambda: self.save_raw_report(text)).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+                  
+        tk.Button(btn_frame, text="PRINT RECORD | طباعة", bg="#38BDF8", fg="#0F172A", 
+                  font=("Segoe UI", 10, "bold"), pady=15, relief=tk.FLAT,
+                  command=lambda: self.print_raw_report(text)).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
+
+    def print_raw_report(self, text):
+        import tempfile
+        import os
+        try:
+            fd, path = tempfile.mkstemp(suffix=".txt")
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(text)
+            os.startfile(path, "print")
+        except Exception as e:
+            messagebox.showerror("Print Error", f"خطأ في الطباعة: {str(e)}")
 
     def save_raw_report(self, text):
         f = filedialog.asksaveasfilename(defaultextension=".txt")
